@@ -256,6 +256,7 @@ object ConfigKeys {
   val containerProxy = "whisk.container-proxy"
   val containerProxyTimeouts = s"$containerProxy.timeouts"
   val containerProxyHealth = s"$containerProxy.action-health-check"
+  val containerProxyUpdatePolicy = s"$containerProxy.update-policy"
   val containerProxyActivationErrorLogs = s"$containerProxy.log-activation-errors"
 
   val s3 = "whisk.s3"

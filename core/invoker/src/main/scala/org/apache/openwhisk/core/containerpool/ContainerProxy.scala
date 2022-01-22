@@ -65,6 +65,8 @@ import scala.concurrent.Future
 import scala.concurrent.duration._
 import scala.util.{Failure, Success}
 
+import scala.annotation.tailrec
+
 // States
 sealed trait ContainerState
 case object Uninitialized extends ContainerState
@@ -259,6 +261,7 @@ class ContainerProxy(factory: (TransactionId,
                      poolConfig: ContainerPoolConfig,
                      healtCheckConfig: ContainerProxyHealthCheckConfig,
                      activationErrorLoggingConfig: ContainerProxyActivationErrorLogConfig,
+                     updatePolicyConfig: ContainerProxyUpdatePolicyConfig,
                      unusedTimeout: FiniteDuration,
                      pauseGrace: FiniteDuration,
                      testTcp: Option[ActorRef])
@@ -277,6 +280,98 @@ class ContainerProxy(factory: (TransactionId,
   var activeCount = 0;
   var healthPingActor: Option[ActorRef] = None //setup after prewarm starts
   val tcp: ActorRef = testTcp.getOrElse(IO(Tcp)) //allows to testing interaction with Tcp extension
+
+  val policy: String = updatePolicyConfig.policy
+  val priorityClasses: Int = updatePolicyConfig.priorityClasses  // total priority classes
+  val blockingUpdate: Boolean = updatePolicyConfig.blockingUpdate
+  val defaultPriority = 1
+  val computePolicy: Option[Int] => Double = policy match {
+    // --cpus decimal : Number of CPUs
+    case "cpus" => computeResource(computeCpus)
+    // -c, --cpu-shares int : CPU shares (relative weight)
+    case "cpu_shares" => computeResource(computeCpuShares)
+    case _ => computeResource(computeCpuShares)
+  }
+
+  // mapping [priorityLevel, numberOfActivation]
+  //  var provisionedResources: SortedMap[Int, Int] = SortedMap(1 to priorityClasses map { i => (i, 0) } :_*)
+  //  var provisionedResources: SortedMap[Int, Int] = SortedMap()
+  var currentPriority = 0
+  @tailrec
+  private def computeCpuShares(priority: Int): Int = {
+    val cpuSharesUnit = 1024
+
+    if (priority > 0 /*&& priority <= priorityClasses*/) cpuSharesUnit * priority / priorityClasses
+    else computeCpuShares(defaultPriority)
+  }
+  @tailrec
+  private def computeCpus(priority: Int): Double = {
+    val cpusUnit = 1.0
+
+    if (priority > 0 /*&& priority <= priorityClasses*/) cpusUnit * priority / priorityClasses
+    else computeCpus(defaultPriority)
+  }
+
+  /**
+   * see@ https://gist.github.com/agemooij/f2e4075a193d166355f8
+   *
+   * @param activation
+   * @return
+   */
+  private def computeResource(assignResource: Int => Double)(priority: Option[Int]): Double = {
+    priority match {
+      case Some(priority) => assignResource(priority)
+      case None => assignResource(defaultPriority)
+    }
+  }
+
+  private def extractPriorityFrom(activation: ActivationMessage): Option[Int] = {
+    val schedulerKey = "$scheduler"
+    val priorityKey = "priority"
+    activation.content match {
+      case Some(content) =>
+        content.getFields(schedulerKey) match {
+          case Seq(scheduler) =>
+            scheduler.asJsObject.getFields(priorityKey) match {
+              case Seq(priority) => Some(priority.convertTo[Int])
+              case _ => None  // priority field not found
+            }
+          case _ => None  // $scheduler field not found
+        }
+      case None => None  // default cpu_share value
+    }
+  }
+
+  /**
+   *
+   * @param currentResources current resource in the container
+   * @param priority activation's priority to update
+   * @param release whether new activation or the completion one
+   * @return
+   */
+  private def computeArgsUpdate(priority: Int): Option[Seq[(String, String)]] = {
+    // TODO: check if computed result are within limits admitted by Docker
+    //   DONE --cpu-shares: min value = 2; max value = 262144; value must be integer
+    //   --cpus: "0.01 to 2.00, as there are only 2 CPUs available" value must be up to 9 decimal digits
+    val currentValue = currentPriority
+    priority match {
+      case `currentValue` => None
+      case _ =>
+        logging.info(this, s"Updating container priority from ${currentPriority} to ${priority}")
+        currentPriority = priority
+        val resources = computePolicy(Some(priority))
+        policy match {
+          case "cpus" =>
+            Some(Seq(("--cpus", resources.toString.take(8))))
+          case "cpu_shares" =>
+            val cappedValue = math.max(2, math.min(resources, 262144))
+            Some(Seq(("--cpu-shares", cappedValue.toInt.toString)))
+          case _ =>
+            val cappedValue = math.max(2, math.min(resources, 262144))
+            Some(Seq(("--cpu-shares", cappedValue.toInt.toString)))
+        }
+    }
+  }
 
   startWith(Uninitialized, NoData())
 
@@ -301,6 +396,9 @@ class ContainerProxy(factory: (TransactionId,
     case Event(job: Run, _) =>
       implicit val transid = job.msg.transid
       activeCount += 1
+      val activationPriority = extractPriorityFrom(job.msg).getOrElse(defaultPriority)
+      val cpuShares = computeCpuShares(activationPriority)
+      logging.info(this, s"cold start - action priority: ${activationPriority} - cpu shares: ${cpuShares}.")
       // create a new container
       val container = factory(
         job.msg.transid,
@@ -308,7 +406,8 @@ class ContainerProxy(factory: (TransactionId,
         job.action.exec.image,
         job.action.exec.pull,
         job.action.limits.memory.megabytes.MB,
-        poolConfig.cpuShare(job.action.limits.memory.megabytes.MB),
+//        poolConfig.cpuShare(job.action.limits.memory.megabytes.MB),
+        cpuShares,
         Some(job.action))
 
       // container factory will either yield a new container ready to execute the action, or
@@ -882,8 +981,11 @@ class ContainerProxy(factory: (TransactionId,
       if (splitAckMessagesPendingLogCollection) Future.successful(())
       else
         activation.map { result =>
-          val msg = CompletionMessage(tid, result, instance)
-          sendActiveAck(tid, result, job.msg.blocking, job.msg.rootControllerIndex, job.msg.user.namespace.uuid, msg)
+          //          val msg = CompletionMessage(tid, result, instance)
+          //          sendActiveAck(tid, result, job.msg.blocking, job.msg.rootControllerIndex, job.msg.user.namespace.uuid, msg)
+          // Modified to enable Scheduler's SJF policy easily, without communicating with CouchDB
+          val msg = CombinedCompletionAndResultMessage(tid, result, instance)
+          sendActiveAck(tid, result, blockingInvoke = true, job.msg.rootControllerIndex, job.msg.user.namespace.uuid, msg)
         }
     }
 
@@ -968,6 +1070,7 @@ final case class ContainerProxyHealthCheckConfig(enabled: Boolean, checkPeriod: 
 final case class ContainerProxyActivationErrorLogConfig(applicationErrors: Boolean,
                                                         developerErrors: Boolean,
                                                         whiskErrors: Boolean)
+final case class ContainerProxyUpdatePolicyConfig(policy: String, priorityClasses: Int, blockingUpdate: Boolean)
 
 object ContainerProxy {
   def props(factory: (TransactionId,
@@ -985,6 +1088,7 @@ object ContainerProxy {
             healthCheckConfig: ContainerProxyHealthCheckConfig =
               loadConfigOrThrow[ContainerProxyHealthCheckConfig](ConfigKeys.containerProxyHealth),
             activationErrorLogConfig: ContainerProxyActivationErrorLogConfig = activationErrorLogging,
+            updatePolicyConfig: ContainerProxyUpdatePolicyConfig = updatePolicy,
             unusedTimeout: FiniteDuration = timeouts.idleContainer,
             pauseGrace: FiniteDuration = timeouts.pauseGrace,
             tcp: Option[ActorRef] = None) =
@@ -998,6 +1102,7 @@ object ContainerProxy {
         poolConfig,
         healthCheckConfig,
         activationErrorLogConfig,
+        updatePolicyConfig,
         unusedTimeout,
         pauseGrace,
         tcp))
@@ -1008,6 +1113,8 @@ object ContainerProxy {
   val timeouts = loadConfigOrThrow[ContainerProxyTimeoutConfig](ConfigKeys.containerProxyTimeouts)
   val activationErrorLogging =
     loadConfigOrThrow[ContainerProxyActivationErrorLogConfig](ConfigKeys.containerProxyActivationErrorLogs)
+  val updatePolicy: ContainerProxyUpdatePolicyConfig =
+    loadConfigOrThrow[ContainerProxyUpdatePolicyConfig](ConfigKeys.containerProxyUpdatePolicy)
 
   /**
    * Generates a unique container name.

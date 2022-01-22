@@ -109,6 +109,12 @@ trait Container {
     closeConnections(httpConnection)
   }
 
+  /**
+   * Update container's resources.
+   * NOT thread-safe - caller must synchronize.
+   */
+  def update(args: Seq[(String, String)])(implicit transid: TransactionId): Future[Unit]
+
   /** Initializes code in the container. */
   def initialize(initializer: JsObject,
                  timeout: FiniteDuration,

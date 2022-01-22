@@ -137,6 +137,10 @@ class KubernetesContainer(protected[core] val id: ContainerId,
     kubernetes.rm(this)
   }
 
+  override def update(args: Seq[(String, String)])(implicit transid: TransactionId): Future[Unit] = {
+    Future.failed(new NotImplementedError(s"Update not yet implemented in ${this.getClass.getSimpleName}."))
+  }
+
   override def initialize(initializer: JsObject,
                           timeout: FiniteDuration,
                           maxConcurrent: Int,

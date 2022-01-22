@@ -74,6 +74,10 @@ class YARNTask(override protected val id: ContainerId,
     ask(yarnComponentActor, RemoveContainer(component_instance_name)).mapTo[Unit]
   }
 
+  override def update(args: Seq[(String, String)])(implicit transid: TransactionId): Future[Unit] = {
+    Future.failed(new NotImplementedError(s"Update not yet implemented in ${this.getClass.getSimpleName}."))
+  }
+
   /**
    * Obtains logs up to a given threshold from the container. Optionally waits for a sentinel to appear.
    * For YARN, this log message is static per container, just indicating that YARN logs can be found via the YARN UI.

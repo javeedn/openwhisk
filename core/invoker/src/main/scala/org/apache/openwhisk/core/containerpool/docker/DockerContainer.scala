@@ -191,6 +191,14 @@ class DockerContainer(protected val id: ContainerId,
     docker.rm(id)
   }
 
+  override def update(args: Seq[(String, String)])(implicit transid: TransactionId): Future[Unit] = {
+    if (useRunc) {
+      Future.failed(new NotImplementedError(s"Updating container's resources not yet supported using runc."))
+    } else {
+      docker.update(id, args)
+    }
+  }
+
   /**
    * Was the container killed due to memory exhaustion?
    *

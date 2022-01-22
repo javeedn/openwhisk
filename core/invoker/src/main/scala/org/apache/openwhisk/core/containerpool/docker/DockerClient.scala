@@ -63,7 +63,8 @@ case class DockerClientTimeoutConfig(run: Duration,
                                      pause: Duration,
                                      unpause: Duration,
                                      version: Duration,
-                                     inspect: Duration)
+                                     inspect: Duration,
+                                     update: Duration)
 
 /**
  * Configuration for docker client
@@ -211,6 +212,13 @@ class DockerClient(dockerHost: Option[String] = None,
       case Failure(t) => transid.failed(this, start, t.getMessage, ErrorLevel)
     }
   }
+
+  override def update(id: ContainerId, args: Seq[(String, String)])(implicit transId: TransactionId): Future[Unit] = {
+    // val resourcesToUpdate = args.flatMap(e => Seq(e._1, e._2))
+    val resourcesToUpdate = args.flatMap { case(flag, value) => Seq(s"$flag=$value") }
+    val cmd = Seq("update") ++ resourcesToUpdate ++ Seq(id.asString)
+    runCmd(cmd, config.timeouts.update).map(_ => ())
+  }
 }
 
 trait DockerApi {
@@ -294,6 +302,15 @@ trait DockerApi {
    * @return a Future containing whether the container was killed or not
    */
   def isOomKilled(id: ContainerId)(implicit transid: TransactionId): Future[Boolean]
+
+  /**
+   * Updates the given container.
+   *
+   * @param id the id of the container to check
+   * @param args arguments for the docker run command
+   * @return a Future completing according to the command's exit-code
+   */
+  def update(id: ContainerId, args: Seq[(String, String)])(implicit  transId: TransactionId): Future[Unit]
 }
 
 /** Indicates any error while starting a container that leaves a broken container behind that needs to be removed */

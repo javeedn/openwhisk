@@ -214,6 +214,10 @@ class MesosTask(override protected val id: ContainerId,
     MesosTask.destroy(mesosClientActor, mesosConfig, taskId)
   }
 
+  override def update(args: Seq[(String, String)])(implicit transid: TransactionId): Future[Unit] = {
+    Future.failed(new NotImplementedError(s"Update not yet implemented in ${this.getClass.getSimpleName}."))
+  }
+
   /**
    * Obtains logs up to a given threshold from the container. Optionally waits for a sentinel to appear.
    * For Mesos, this log message is static per container, just indicating that Mesos logs can be found via the Mesos UI.
