@@ -123,8 +123,9 @@ class InvokerReactive(
   private val msgProvider = SpiLoader.get[MessagingProvider]
 
   //number of peeked messages - increasing the concurrentPeekFactor improves concurrent usage, but adds risk for message loss in case of crash
-  private val maxPeek =
-    math.max(maximumContainers, (maximumContainers * limitsConfig.max * poolConfig.concurrentPeekFactor).toInt)
+//  private val maxPeek =
+//    math.max(maximumContainers, (maximumContainers * limitsConfig.max * poolConfig.concurrentPeekFactor).toInt)
+  private val maxPeek = 1024 * 1024
 
   private val consumer =
     msgProvider.getConsumer(config, topic, topic, maxPeek, maxPollInterval = TimeLimit.MAX_DURATION + 1.minute)

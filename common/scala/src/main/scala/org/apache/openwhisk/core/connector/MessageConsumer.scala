@@ -184,7 +184,8 @@ class MessageFeed(description: String,
           // state with enough buffering (i.e., maxPipelineDepth > maxPeek), the latency
           // of the commit should be masked.
           val records = consumer.peek(longPollDuration)
-          consumer.commit()
+          // Setted auto-commit with interval 500 ms
+//          consumer.commit()
           FillCompleted(records.toSeq)
         }
       }.andThen {
