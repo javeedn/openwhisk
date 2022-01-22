@@ -340,8 +340,12 @@ protected[actions] trait PrimitiveActions {
         invokeSimpleAction(
           user,
           action = session.action,
+          // TODO: field 'cmpLength' could be (maybe) filled here with correct information about composition length
           payload = params,
-          waitForResponse = Some(session.action.limits.timeout.duration + 1.minute), // wait for result
+          // NOTE: composition action can not be non-blocking because they need result field,
+          //   so they need to wait for component/conductor action to complete, to compute the next action
+          //          waitForResponse = Some(session.action.limits.timeout.duration + 1.minute), // wait for result
+          waitForResponse = Some(session.action.limits.timeout.duration + 60.minute),
           cause = Some(session.activationId)) // cause is session id
 
       waitForActivation(user, session, activationResponse).flatMap {
@@ -475,7 +479,11 @@ protected[actions] trait PrimitiveActions {
           user,
           action,
           payload,
-          waitForResponse = Some(action.limits.timeout.duration + 1.minute),
+          // TODO: this timeout could be remain untouched
+          //          waitForResponse = Some(action.limits.timeout.duration + 1.minute),
+          // wait up to 60 min because is it possible that Scheduler component does not process
+          //   the activation immediately
+          waitForResponse = Some(action.limits.timeout.duration + 60.minute),
           cause = Some(session.activationId))
       case None => // sequence
         session.accounting.components += 1

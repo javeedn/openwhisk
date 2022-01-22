@@ -39,6 +39,9 @@ import scala.concurrent.duration._
 import scala.concurrent.{ExecutionContext, Future, Promise}
 import scala.util.{Failure, Success}
 
+import spray.json._
+import spray.json.DefaultJsonProtocol._
+
 /**
  * Abstract class which provides common logic for all LoadBalancer implementations.
  */
@@ -175,18 +178,50 @@ abstract class CommonLoadBalancer(config: WhiskConfig,
   protected def sendActivationToInvoker(producer: MessageProducer,
                                         msg: ActivationMessage,
                                         invoker: InvokerInstanceId): Future[RecordMetadata] = {
-    implicit val transid: TransactionId = msg.transid
+    // To insert indented objects see@ WskActivationTests.scala
+    // also see@ https://stackoverflow.com/questions/43960934/how-to-edit-existing-json-object-with-sprayjson
+    //      see@ https://stackoverflow.com/questions/37523542/add-field-to-existing-json-object-with-sprayjson-scala
+    val targetInvoker: String = s"invoker${invoker.toInt}"
+    val scheduler: JsObject = JsObject("target" -> targetInvoker.toJson)
+    // here perform double check for msg.content field, to force activation
+    //   generated from test action to have $scheduler object
+    // another option is to add required information in InvokerSupervision#invokeTestAction, but in order to modify
+    //   minimum number of methods, here is performed a double check
+    val newContent: Option[JsObject] = msg.content match {
+      case Some(value) => if (value.fields.contains("$scheduler")) {
+        Some(value)
+      } else {
+        Some(JsObject(value.fields + ("$scheduler" -> scheduler)))
+      }
+      case _ => Some(JsObject("$scheduler" -> scheduler))
+    }
+    val newMsg: ActivationMessage = msg.copy(
+      msg.transid,
+      msg.action,
+      msg.revision,
+      msg.user,
+      msg.activationId,
+      msg.rootControllerIndex,
+      msg.blocking,
+      newContent,
+      msg.initArgs,
+      msg.lockedArgs,
+      msg.cause,
+      msg.traceContext
+    )
 
-    val topic = s"invoker${invoker.toInt}"
+    implicit val transid: TransactionId = newMsg.transid
+    // val topic = s"invoker${invoker.toInt}"
+    val topic = s"scheduler"
 
     MetricEmitter.emitCounterMetric(LoggingMarkers.LOADBALANCER_ACTIVATION_START)
     val start = transid.started(
       this,
       LoggingMarkers.CONTROLLER_KAFKA,
-      s"posting topic '$topic' with activation id '${msg.activationId}'",
+      s"posting topic '$topic' with activation id '${newMsg.activationId}'",
       logLevel = InfoLevel)
 
-    producer.send(topic, msg).andThen {
+    producer.send(topic, newMsg).andThen {
       case Success(status) =>
         transid.finished(
           this,
