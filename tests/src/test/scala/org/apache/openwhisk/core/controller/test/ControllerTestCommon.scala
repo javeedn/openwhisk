@@ -109,7 +109,7 @@ protected trait ControllerTestCommon
   val entityStore = WhiskEntityStore.datastore()
   val authStore = WhiskAuthStore.datastore()
   val logStore = SpiLoader.get[LogStoreProvider].instance(actorSystem)
-  val activationStore = SpiLoader.get[ActivationStoreProvider].instance(actorSystem, materializer, logging)
+  val activationStore = SpiLoader.get[ActivationStoreProvider].instance(actorSystem, logging)
 
   def deleteAction(doc: DocId)(implicit transid: TransactionId) = {
     Await.result(WhiskAction.get(entityStore, doc) flatMap { doc =>
@@ -311,6 +311,9 @@ class DegenerateLoadBalancerService(config: WhiskConfig)(implicit ec: ExecutionC
 
   override def totalActiveActivations = Future.successful(0)
   override def activeActivationsFor(namespace: UUID) = Future.successful(0)
+  override def activeActivationsByController(controller: String): Future[Int] = Future.successful(0)
+  override def activeActivationsByController: Future[List[ActivationId]] = Future.successful(List(ActivationId("id")))
+  override def activeActivationsByInvoker(invoker: String): Future[Int] = Future.successful(0)
 
   override def publish(action: ExecutableWhiskActionMetaData, msg: ActivationMessage)(
     implicit transid: TransactionId): Future[Future[Either[ActivationId, WhiskActivation]]] = {

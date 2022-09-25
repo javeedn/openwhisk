@@ -26,6 +26,12 @@ research project is available
 
 # OpenWhisk
 
+[![Build Status](https://travis-ci.com/apache/openwhisk.svg?branch=master)](https://travis-ci.com/github/apache/openwhisk)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](http://www.apache.org/licenses/LICENSE-2.0)
+[![Join Slack](https://img.shields.io/badge/join-slack-9B69A0.svg)](https://openwhisk-team.slack.com/)
+[![codecov](https://codecov.io/gh/apache/openwhisk/branch/master/graph/badge.svg)](https://codecov.io/gh/apache/openwhisk)
+[![Twitter](https://img.shields.io/twitter/follow/openwhisk.svg?style=social&logo=twitter)](https://twitter.com/intent/follow?screen_name=openwhisk)
+
 OpenWhisk is a serverless functions platform for building cloud applications.
 OpenWhisk offers a rich programming model for creating serverless APIs from functions,
 composing functions into serverless workflows, and connecting events to functions using rules and triggers.

@@ -51,6 +51,7 @@ whisk:
   feature_flags:
     require_api_key_annotation: "{{ require_api_key_annotation | default(true) | lower }}"
     require_response_payload: "{{ require_response_payload | default(true) | lower }}"
+  cluster_name: "{{ whisk_cluster_name | default('whisk') }}"
 
 ##
 # configuration parameters related to support runtimes (see org.apache.openwhisk.core.entity.ExecManifest for schema of the manifest).
@@ -138,6 +139,8 @@ registry:
   confdir: "{{ config_root_dir }}/registry"
 
 kafka:
+  topicsPrefix: "{{ kafka_topics_prefix | default('') }}"
+  topicsUserEventPrefix: "{{ kafka_topics_userEvent_prefix | default(kafka_topics_prefix) | default('') }}"
   ssl:
     client_authentication: required
     keystore:
@@ -150,7 +153,7 @@ kafka:
     protocols:
     - TLSv1.2
   protocol: "{{ kafka_protocol_for_setup }}"
-  version: 2.12-2.3.1
+  version: "{{ kafka_version | default('2.13-2.7.0') }}"
   port: 9072
   advertisedPort: 9093
   ras:
@@ -218,6 +221,8 @@ invoker:
     keystore:
       password: "{{ invoker_keystore_password | default('openwhisk') }}"
       name: "{{ __invoker_ssl_keyPrefix }}openwhisk-keystore.p12"
+  reactiveSpi: "{{ invokerReactive_spi | default('') }}"
+  serverSpi: "{{ invokerServer_spi | default('') }}"
 
 userLogs:
   spi: "{{ userLogs_spi | default('org.apache.openwhisk.core.containerpool.logging.DockerToActivationLogStoreProvider') }}"
@@ -227,7 +232,7 @@ nginx:
   htmldir: "{{ ui_path | default(false) }}"
   dir:
     become: "{{ nginx_dir_become | default(false) }}"
-  version: "{{ nginx_version | default('1.19') }}"
+  version: "{{ nginx_version | default('1.21.1') }}"
   port:
     http: 80
     https: 443
@@ -273,6 +278,8 @@ db:
     invoker:
       user: "{{ db_invoker_user | default(lookup('ini', 'db_username section=invoker file={{ playbook_dir }}/db_local.ini')) }}"
       pass: "{{ db_invoker_pass | default(lookup('ini', 'db_password section=invoker file={{ playbook_dir }}/db_local.ini')) }}"
+  artifact_store:
+    backend: "{{ db_artifact_backend | default('CouchDB') }}"
   activation_store:
     backend: "{{ db_activation_backend | default('CouchDB') }}"
   elasticsearch:
@@ -294,6 +301,10 @@ db:
       admin:
         username: "{{ elastic_username | default('admin') }}"
         password: "{{ elastic_password | default('admin') }}"
+  mongodb:
+    connect_string: "{{ mongodb_connect_string | default('mongodb://172.17.0.1:27017') }}"
+    database: "{{ mongodb_database | default('whisks') }}"
+    data_volume: "{{ mongodb_data_volume | default('mongo-data') }}"
 
 apigateway:
   port:
@@ -321,6 +332,8 @@ elasticsearch_connect_string: "{% set ret = [] %}\
                                {{ ret.append( hostvars[host].ansible_host + ':' + ((db.elasticsearch.port+loop.index-1)|string) ) }}\
                                {% endfor %}\
                                {{ ret | join(',') }}"
+mongodb:
+  version: 4.4.0
 
 docker:
   # The user to install docker for. Defaults to the ansible user if not set. This will be the user who is able to run
@@ -421,3 +434,42 @@ metrics:
     port: "{{ metrics_kamon_statsd_port | default('8125') }}"
 
 user_events: "{{ user_events_enabled | default(false) | lower }}"
+
+durationChecker:
+    timeWindow: "{{ duration_checker_time_window | default('1 d') }}"
+
+etcd:
+  version: "{{ etcd_version | default('v3.4.0') }}"
+  client:
+    port: 2379
+  server:
+    port: 2480
+  cluster:
+    token: "{{ etcd_cluster_token | default('openwhisk-etcd-token') }}"
+  dir:
+    data: "{{ etcd_data_dir | default('') }}"
+  lease:
+    timeout: "{{ etcd_lease_timeout | default(1) }}"
+  loglevel: "{{ etcd_log_level | default('info') }}"
+  quota_backend_bytes: "{{ etcd_quota_backend_bytes | default(0) }}"
+  snapshot_count: "{{ etcd_snapshot_count | default(100000) }}"
+  auto_compaction_retention: "{{ etcd_auto_compaction_retention | default(1) }}"
+  auto_compaction_mode: "{{ etcd_auto_compaction_mode | default('periodic') }}"
+  pool_threads: "{{ etcd_pool_threads | default(10) }}"
+
+etcd_connect_string: "{% set ret = [] %}\
+                      {% for host in groups['etcd'] %}\
+                        {{ ret.append( hostvars[host].ansible_host + ':' + ((etcd.client.port+loop.index-1)|string) ) }}\
+                      {% endfor %}\
+                      {{ ret | join(',') }}"
+
+scheduler:
+  protocol: "{{ scheduler_protocol | default('http') }}"
+  grpc:
+    tls: "{{ scheduler_grpc_tls | default(false) }}"
+  maxPeek: "{{ scheduler_max_peek | default(128) }}"
+  queueManager:
+    maxSchedulingTime: "{{ scheduler_maxSchedulingTime | default('20 second') }}"
+    maxRetriesToGetQueue: "{{ scheduler_maxRetriesToGetQueue | default(13) }}"
+  dataManagementService:
+    retryInterval: "{{ scheduler_dataManagementService_retryInterval | default('1 second') }}"

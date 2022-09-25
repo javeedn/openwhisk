@@ -25,7 +25,6 @@ import akka.actor.ActorSystem
 import akka.event.Logging.ErrorLevel
 import akka.http.scaladsl.model._
 import akka.stream.scaladsl.Flow
-import akka.stream._
 import com.sksamuel.elastic4s.http.search.SearchHit
 import com.sksamuel.elastic4s.http.{ElasticClient, ElasticProperties, NoOpRequestConfigCallback}
 import com.sksamuel.elastic4s.indexes.IndexRequest
@@ -57,26 +56,14 @@ case class ElasticSearchActivationStoreConfig(protocol: String,
 
 class ElasticSearchActivationStore(
   httpFlow: Option[Flow[(HttpRequest, Promise[HttpResponse]), (Try[HttpResponse], Promise[HttpResponse]), Any]] = None,
-  elasticSearchConfig: ElasticSearchActivationStoreConfig =
-    loadConfigOrThrow[ElasticSearchActivationStoreConfig](ConfigKeys.elasticSearchActivationStore),
-  useBatching: Boolean = false)(implicit actorSystem: ActorSystem,
-                                actorMaterializer: ActorMaterializer,
-                                logging: Logging)
+  elasticSearchConfig: ElasticSearchActivationStoreConfig,
+  useBatching: Boolean = false)(implicit actorSystem: ActorSystem, logging: Logging)
     extends ActivationStore {
 
   import com.sksamuel.elastic4s.http.ElasticDsl._
+  import ElasticSearchActivationStore.{generateIndex, httpClientCallback}
 
   private implicit val executionContextExecutor: ExecutionContextExecutor = actorSystem.dispatcher
-
-  private val httpClientCallback = new HttpClientConfigCallback {
-    override def customizeHttpClient(httpClientBuilder: HttpAsyncClientBuilder): HttpAsyncClientBuilder = {
-      val provider = new BasicCredentialsProvider
-      provider.setCredentials(
-        AuthScope.ANY,
-        new UsernamePasswordCredentials(elasticSearchConfig.username, elasticSearchConfig.password))
-      httpClientBuilder.setDefaultCredentialsProvider(provider)
-    }
-  }
 
   private val client =
     ElasticClient(
@@ -155,11 +142,22 @@ class ElasticSearchActivationStore(
       .map { res =>
         if (res.status == StatusCodes.OK.intValue || res.status == StatusCodes.Created.intValue) {
           res.result.items.map { bulkRes =>
-            if (bulkRes.status == StatusCodes.OK.intValue || bulkRes.status == StatusCodes.Created.intValue)
+            if (bulkRes.status == StatusCodes.OK.intValue || bulkRes.status == StatusCodes.Created.intValue) {
+              transid
+                .finished(
+                  this,
+                  start,
+                  s"[PUT] 'activations' completed document: '${bulkRes.id}', response: '${DocInfo(bulkRes.id)}'")
               Right(DocInfo(bulkRes.id))
-            else
+            } else {
+              transid.failed(
+                this,
+                start,
+                s"'activations' failed to put documents, http status: '${bulkRes.status}'",
+                ErrorLevel)
               Left(PutException(
                 s"Unexpected error: ${bulkRes.error.map(e => s"${e.`type`}:${e.reason}").getOrElse("unknown")}, code: ${bulkRes.status} on 'bulk_put'"))
+            }
           }
         } else {
           transid.failed(
@@ -206,7 +204,10 @@ class ElasticSearchActivationStore(
           throw GetException("Unexpected http response code: " + res.status)
         }
       } recoverWith {
-      case _: DeserializationException => throw DocumentUnreadable(Messages.corruptedEntity)
+      case _: DeserializationException =>
+        transid
+          .finished(this, start, s"[GET] 'activations' failed to get document: '$activationId'; failed to deserialize")
+        throw DocumentUnreadable(Messages.corruptedEntity)
     }
 
     reportFailure(
@@ -407,10 +408,6 @@ class ElasticSearchActivationStore(
     activationId.toString.split("/")(0)
   }
 
-  private def generateIndex(namespace: String): String = {
-    elasticSearchConfig.indexPattern.dropWhile(_ == '/') format namespace.toLowerCase
-  }
-
   private def generateRangeQuery(key: String, since: Option[Instant], upto: Option[Instant]): RangeQuery = {
     rangeQuery(key)
       .gte(since.map(_.toEpochMilli).getOrElse(minStart))
@@ -418,7 +415,30 @@ class ElasticSearchActivationStore(
   }
 }
 
+object ElasticSearchActivationStore {
+  val elasticSearchConfig: ElasticSearchActivationStoreConfig =
+    loadConfigOrThrow[ElasticSearchActivationStoreConfig](ConfigKeys.elasticSearchActivationStore)
+
+  val httpClientCallback = new HttpClientConfigCallback {
+    override def customizeHttpClient(httpClientBuilder: HttpAsyncClientBuilder): HttpAsyncClientBuilder = {
+      val provider = new BasicCredentialsProvider
+      provider.setCredentials(
+        AuthScope.ANY,
+        new UsernamePasswordCredentials(elasticSearchConfig.username, elasticSearchConfig.password))
+      httpClientBuilder.setDefaultCredentialsProvider(provider)
+    }
+  }
+
+  def generateIndex(namespace: String): String = {
+    elasticSearchConfig.indexPattern.dropWhile(_ == '/') format namespace.toLowerCase
+  }
+}
+
 object ElasticSearchActivationStoreProvider extends ActivationStoreProvider {
-  override def instance(actorSystem: ActorSystem, actorMaterializer: ActorMaterializer, logging: Logging) =
-    new ElasticSearchActivationStore(useBatching = true)(actorSystem, actorMaterializer, logging)
+  import ElasticSearchActivationStore.elasticSearchConfig
+
+  override def instance(actorSystem: ActorSystem, logging: Logging) =
+    new ElasticSearchActivationStore(elasticSearchConfig = elasticSearchConfig, useBatching = true)(
+      actorSystem,
+      logging)
 }

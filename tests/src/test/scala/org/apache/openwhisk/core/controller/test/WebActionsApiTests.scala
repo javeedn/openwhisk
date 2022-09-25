@@ -29,6 +29,7 @@ import akka.http.scaladsl.marshallers.sprayjson.SprayJsonSupport._
 import akka.http.scaladsl.model.FormData
 import akka.http.scaladsl.model.HttpEntity
 import akka.http.scaladsl.model.MediaTypes
+import akka.http.scaladsl.model.StatusCodes
 import akka.http.scaladsl.model.StatusCodes._
 import akka.http.scaladsl.model.HttpCharsets
 import akka.http.scaladsl.model.HttpHeader
@@ -772,18 +773,18 @@ trait WebActionsApiBaseTests extends ControllerTestCommon with BeforeAndAfterEac
       put(entityStore, reference)
       put(entityStore, action)
 
-      val contentX = JsObject("x" -> "overriden".toJson)
-      val contentZ = JsObject("z" -> "overriden".toJson)
+      val contentX = JsObject("x" -> "overridden".toJson)
+      val contentZ = JsObject("z" -> "overridden".toJson)
 
       allowedMethodsWithEntity.foreach { m =>
         invocationsAllowed += 1
 
-        m(s"$testRoutePath/$systemId/${reference.name}/export_c.json?x=overriden") ~> Route.seal(routes(creds)) ~> check {
+        m(s"$testRoutePath/$systemId/${reference.name}/export_c.json?x=overridden") ~> Route.seal(routes(creds)) ~> check {
           status should be(BadRequest)
           responseAs[ErrorResponse].error shouldBe Messages.parametersNotAllowed
         }
 
-        m(s"$testRoutePath/$systemId/${reference.name}/export_c.json?y=overriden") ~> Route.seal(routes(creds)) ~> check {
+        m(s"$testRoutePath/$systemId/${reference.name}/export_c.json?y=overridden") ~> Route.seal(routes(creds)) ~> check {
           status should be(BadRequest)
           responseAs[ErrorResponse].error shouldBe Messages.parametersNotAllowed
         }
@@ -793,13 +794,13 @@ trait WebActionsApiBaseTests extends ControllerTestCommon with BeforeAndAfterEac
           responseAs[ErrorResponse].error shouldBe Messages.parametersNotAllowed
         }
 
-        m(s"$testRoutePath/$systemId/${reference.name}/export_c.json?y=overriden", contentZ) ~> Route.seal(
+        m(s"$testRoutePath/$systemId/${reference.name}/export_c.json?y=overridden", contentZ) ~> Route.seal(
           routes(creds)) ~> check {
           status should be(BadRequest)
           responseAs[ErrorResponse].error shouldBe Messages.parametersNotAllowed
         }
 
-        m(s"$testRoutePath/$systemId/${reference.name}/export_c.json?empty=overriden") ~> Route.seal(routes(creds)) ~> check {
+        m(s"$testRoutePath/$systemId/${reference.name}/export_c.json?empty=overridden") ~> Route.seal(routes(creds)) ~> check {
           status should be(OK)
           val response = responseAs[JsObject]
           response shouldBe JsObject(
@@ -807,7 +808,7 @@ trait WebActionsApiBaseTests extends ControllerTestCommon with BeforeAndAfterEac
             "action" -> "export_c".toJson,
             "content" -> metaPayload(
               m.method.name.toLowerCase,
-              Map("empty" -> "overriden").toJson.asJsObject,
+              Map("empty" -> "overridden").toJson.asJsObject,
               creds,
               pkgName = "proxy"))
         }
@@ -909,6 +910,21 @@ trait WebActionsApiBaseTests extends ControllerTestCommon with BeforeAndAfterEac
           m(s"$testRoutePath/$path") ~> Route.seal(routes(creds)) ~> check {
             status should be(Found)
             header("location").get.toString shouldBe "location: http://openwhisk.org"
+          }
+        }
+      }
+    }
+
+    it should s"use non-standard action status code to terminate an http response (auth? ${creds.isDefined})" in {
+      implicit val tid = transid()
+
+      Seq(s"$systemId/proxy/export_c.http").foreach { path =>
+        allowedMethods.foreach { m =>
+          actionResult = Some(JsObject(webApiDirectives.statusCode -> JsNumber(444)))
+          invocationsAllowed += 1
+
+          m(s"$testRoutePath/$path") ~> Route.seal(routes(creds)) ~> check {
+            status should be(StatusCodes.custom(444, ""))
           }
         }
       }
@@ -1554,18 +1570,18 @@ trait WebActionsApiBaseTests extends ControllerTestCommon with BeforeAndAfterEac
 
     it should s"reject request that tries to override final parameters (auth? ${creds.isDefined})" in {
       implicit val tid = transid()
-      val contentX = JsObject("x" -> "overriden".toJson)
-      val contentZ = JsObject("z" -> "overriden".toJson)
+      val contentX = JsObject("x" -> "overridden".toJson)
+      val contentZ = JsObject("z" -> "overridden".toJson)
 
       allowedMethodsWithEntity.foreach { m =>
         invocationsAllowed += 1
 
-        m(s"$testRoutePath/$systemId/proxy/export_c.json?x=overriden") ~> Route.seal(routes(creds)) ~> check {
+        m(s"$testRoutePath/$systemId/proxy/export_c.json?x=overridden") ~> Route.seal(routes(creds)) ~> check {
           status should be(BadRequest)
           responseAs[ErrorResponse].error shouldBe Messages.parametersNotAllowed
         }
 
-        m(s"$testRoutePath/$systemId/proxy/export_c.json?y=overriden") ~> Route.seal(routes(creds)) ~> check {
+        m(s"$testRoutePath/$systemId/proxy/export_c.json?y=overridden") ~> Route.seal(routes(creds)) ~> check {
           status should be(BadRequest)
           responseAs[ErrorResponse].error shouldBe Messages.parametersNotAllowed
         }
@@ -1575,12 +1591,12 @@ trait WebActionsApiBaseTests extends ControllerTestCommon with BeforeAndAfterEac
           responseAs[ErrorResponse].error shouldBe Messages.parametersNotAllowed
         }
 
-        m(s"$testRoutePath/$systemId/proxy/export_c.json?y=overriden", contentZ) ~> Route.seal(routes(creds)) ~> check {
+        m(s"$testRoutePath/$systemId/proxy/export_c.json?y=overridden", contentZ) ~> Route.seal(routes(creds)) ~> check {
           status should be(BadRequest)
           responseAs[ErrorResponse].error shouldBe Messages.parametersNotAllowed
         }
 
-        m(s"$testRoutePath/$systemId/proxy/export_c.json?empty=overriden") ~> Route.seal(routes(creds)) ~> check {
+        m(s"$testRoutePath/$systemId/proxy/export_c.json?empty=overridden") ~> Route.seal(routes(creds)) ~> check {
           status should be(OK)
           val response = responseAs[JsObject]
           response shouldBe JsObject(
@@ -1588,7 +1604,7 @@ trait WebActionsApiBaseTests extends ControllerTestCommon with BeforeAndAfterEac
             "action" -> "export_c".toJson,
             "content" -> metaPayload(
               m.method.name.toLowerCase,
-              Map("empty" -> "overriden").toJson.asJsObject,
+              Map("empty" -> "overridden").toJson.asJsObject,
               creds,
               pkgName = "proxy"))
         }
@@ -1783,7 +1799,7 @@ trait WebActionsApiBaseTests extends ControllerTestCommon with BeforeAndAfterEac
       implicit val tid = transid()
       invocationsAllowed = 2
 
-      val queryString = "x=overriden&key2=value2"
+      val queryString = "x=overridden&key2=value2"
       Post(s"$testRoutePath/$systemId/proxy/raw_export_c.json?$queryString") ~> Route.seal(routes(creds)) ~> check {
         status should be(OK)
         val response = responseAs[JsObject]
@@ -1799,7 +1815,7 @@ trait WebActionsApiBaseTests extends ControllerTestCommon with BeforeAndAfterEac
 
       Post(
         s"$testRoutePath/$systemId/proxy/raw_export_c.json",
-        JsObject("x" -> "overriden".toJson, "key2" -> "value2".toJson)) ~> Route.seal(routes(creds)) ~> check {
+        JsObject("x" -> "overridden".toJson, "key2" -> "value2".toJson)) ~> Route.seal(routes(creds)) ~> check {
         status should be(OK)
         val response = responseAs[JsObject]
         response shouldBe JsObject(
@@ -1808,7 +1824,7 @@ trait WebActionsApiBaseTests extends ControllerTestCommon with BeforeAndAfterEac
           "content" -> metaPayload(
             Post.method.name.toLowerCase,
             Map(webApiDirectives.query -> "".toJson, webApiDirectives.body -> Base64.getEncoder.encodeToString {
-              JsObject("x" -> JsString("overriden"), "key2" -> JsString("value2")).compactPrint.getBytes
+              JsObject("x" -> JsString("overridden"), "key2" -> JsString("value2")).compactPrint.getBytes
             }.toJson).toJson.asJsObject,
             creds,
             pkgName = "proxy",
@@ -1957,11 +1973,16 @@ trait WebActionsApiBaseTests extends ControllerTestCommon with BeforeAndAfterEac
 
     it should s"allowed string based status code (auth? ${creds.isDefined})" in {
       implicit val tid = transid()
-      invocationsAllowed += 2
+      invocationsAllowed += 3
 
       actionResult = Some(JsObject(webApiDirectives.statusCode -> JsString("200")))
       Head(s"$testRoutePath/$systemId/proxy/export_c.http") ~> Route.seal(routes(creds)) ~> check {
         status should be(OK)
+      }
+
+      actionResult = Some(JsObject(webApiDirectives.statusCode -> JsString("444")))
+      Head(s"$testRoutePath/$systemId/proxy/export_c.http") ~> Route.seal(routes(creds)) ~> check {
+        status should be(StatusCodes.custom(444, ""))
       }
 
       actionResult = Some(JsObject(webApiDirectives.statusCode -> JsString("xyz")))

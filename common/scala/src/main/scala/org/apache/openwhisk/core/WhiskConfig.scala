@@ -203,15 +203,19 @@ object WhiskConfig {
 object ConfigKeys {
   val cluster = "whisk.cluster"
   val loadbalancer = "whisk.loadbalancer"
+  val fraction = "whisk.fraction"
   val buildInformation = "whisk.info"
 
   val couchdb = "whisk.couchdb"
   val cosmosdb = "whisk.cosmosdb"
+  val mongodb = "whisk.mongodb"
   val kafka = "whisk.kafka"
   val kafkaCommon = s"$kafka.common"
   val kafkaProducer = s"$kafka.producer"
   val kafkaConsumer = s"$kafka.consumer"
   val kafkaTopics = s"$kafka.topics"
+  val kafkaTopicsPrefix = s"$kafkaTopics.prefix"
+  val kafkaTopicsUserEventPrefix = s"$kafkaTopics.user-event.prefix"
 
   val memory = "whisk.memory"
   val timeLimit = "whisk.time-limit"
@@ -239,6 +243,7 @@ object ConfigKeys {
   val runtimesRegistry = s"$containerFactory.runtimes-registry"
   val userImagesRegistry = s"$containerFactory.user-images-registry"
   val containerPool = "whisk.container-pool"
+  val containerCreationMaxPeek = "whisk.invoker.container-creation.max-peek"
   val blacklist = "whisk.blacklist"
 
   val kubernetes = "whisk.kubernetes"
@@ -250,7 +255,6 @@ object ConfigKeys {
   val splunk = s"$logStore.splunk"
   val logStoreElasticSearch = s"$logStore.elasticsearch"
 
-  val mesos = "whisk.mesos"
   val yarn = "whisk.yarn"
 
   val containerProxy = "whisk.container-proxy"
@@ -266,12 +270,18 @@ object ConfigKeys {
   val controller = s"whisk.controller"
   val controllerActivation = s"$controller.activation"
 
+  val etcd = "whisk.etcd"
+  val etcdLeaseTimeout = "whisk.etcd.lease.timeout"
+  val etcdPoolThreads = "whisk.etcd.pool.threads"
+
   val activationStore = "whisk.activation-store"
   val elasticSearchActivationStore = s"$activationStore.elasticsearch"
   val activationStoreWithFileStorage = s"$activationStore.with-file-storage"
 
   val metrics = "whisk.metrics"
   val featureFlags = "whisk.feature-flags"
+
+  val durationChecker = s"whisk.duration-checker"
 
   val whiskConfig = "whisk.config"
   val sharedPackageExecuteOnly = s"whisk.shared-packages-execute-only"
@@ -285,4 +295,14 @@ object ConfigKeys {
   val parameterStorage = "whisk.parameter-storage"
 
   val azBlob = "whisk.azure-blob"
+
+  val schedulerGrpcService = "whisk.scheduler.grpc"
+  val schedulerMaxPeek = "whisk.scheduler.max-peek"
+  val schedulerQueue = "whisk.scheduler.queue"
+  val schedulerQueueManager = "whisk.scheduler.queue-manager"
+  val schedulerInProgressJobRetentionSecond = "whisk.scheduler.in-progress-job-retention"
+
+  val whiskClusterName = "whisk.cluster.name"
+
+  val dataManagementServiceRetryInterval = "whisk.scheduler.data-management-service.retryInterval"
 }
