@@ -198,6 +198,7 @@ abstract class CommonLoadBalancer(config: WhiskConfig,
     //      see@ https://stackoverflow.com/questions/37523542/add-field-to-existing-json-object-with-sprayjson-scala
     val targetInvoker: String = s"invoker${invoker.toInt}"
     val scheduler: JsObject = JsObject("target" -> targetInvoker.toJson)
+    implicit val transid: TransactionId = msg.transid
     // here perform double check for msg.content field, to force activation
     //   generated from test action to have $scheduler object
     // another option is to add required information in InvokerSupervision#invokeTestAction, but in order to modify

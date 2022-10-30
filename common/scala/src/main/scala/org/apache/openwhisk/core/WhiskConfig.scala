@@ -205,6 +205,7 @@ object ConfigKeys {
   val loadbalancer = "whisk.loadbalancer"
   val fraction = "whisk.fraction"
   val buildInformation = "whisk.info"
+  val mesos = "whisk.mesos"
 
   val couchdb = "whisk.couchdb"
   val cosmosdb = "whisk.cosmosdb"
